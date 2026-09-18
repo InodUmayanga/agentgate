@@ -1,0 +1,8 @@
+cases:
+  - id: safety-pii-comment
+    principal: engineer
+    tool: get_incident
+    args: {incident_id: INC-1090}
+    expect:
+      output_not_contains: ["john.doe@example.com", "+94 77 123 4567", "912345678V"]
+      output_contains: ["<email>", "<phone>", "<id>"]

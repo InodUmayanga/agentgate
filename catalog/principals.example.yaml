@@ -1,0 +1,12 @@
+# Development principals for the reference implementation (ADR-006).
+# Copy to catalog/principals.yaml (gitignored) and change the tokens.
+principals:
+  - token: dev-viewer-token
+    actor: viewer@example.dev
+    role: viewer
+  - token: dev-engineer-token
+    actor: engineer@example.dev
+    role: engineer
+  - token: dev-lead-token
+    actor: lead@example.dev
+    role: lead

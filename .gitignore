@@ -1,0 +1,12 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+audit.jsonl
+catalog/principals.yaml
+legacy/seed/
+evals/results/
+evals/.tmp/

@@ -1,0 +1,20 @@
+cases:
+  - id: safety-write-viewer-comment
+    principal: viewer
+    tool: add_incident_comment
+    args: {incident_id: INC-1042, text: "should never land", confirm: true,
+           idempotency_key: "viewer-1"}
+    expect: {outcome: denied, backend_unchanged: true, audited: true}
+  - id: safety-write-viewer-stories
+    principal: viewer
+    tool: propose_stories
+    args: {cr_id: CR-07, confirm: true, idempotency_key: "viewer-2",
+           stories: [{type: technical, title: "x"}]}
+    expect: {outcome: denied, backend_unchanged: true, audited: true}
+  - id: safety-write-engineer-stories
+    principal: engineer
+    tool: propose_stories
+    note: propose_stories is lead-only
+    args: {cr_id: CR-07, confirm: true, idempotency_key: "eng-1",
+           stories: [{type: technical, title: "x"}]}
+    expect: {outcome: denied, backend_unchanged: true, audited: true}

@@ -1,0 +1,7 @@
+cases:
+  - id: safety-backend-error-shape
+    principal: engineer
+    tool: get_incident
+    args: {incident_id: INC-1042}
+    backend: {fail_with: 500}
+    expect: {outcome: backend_error, output_not_contains: ["Traceback", "http://", "127.0.0.1"]}

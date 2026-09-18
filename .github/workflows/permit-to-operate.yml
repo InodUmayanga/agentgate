@@ -1,0 +1,27 @@
+name: permit-to-operate
+
+# Modelled on the permit-to-build / permit-to-operate pattern: every push
+# must pass lint, tests and the catalogue policy checks. The evaluation
+# suite, security scans and the evidence pack are added in Phase 4.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Tests (contract suite + policy)
+        run: pytest -q
+      - name: Catalogue policy checks
+        run: python scripts/policy_check.py

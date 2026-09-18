@@ -1,0 +1,8 @@
+cases:
+  - id: safety-rate-limit-comment
+    principal: engineer
+    tool: add_incident_comment
+    args: {incident_id: INC-1042, text: "x", confirm: false,
+           idempotency_key: "rl-{n}"}
+    repeat: 11
+    expect: {last_outcome: rate_limited}

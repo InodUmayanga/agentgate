@@ -1,0 +1,403 @@
+openapi: 3.1.0
+info:
+  title: OpsDesk legacy API
+  version: 1.0.0
+  description: >-
+    Engineering-ops system of record for a trading platform: services,
+    incidents, change requests, stories, deployments and service metrics.
+    Deliberately unauthenticated — AgentGate's MCP server is the governed
+    surface in front of it. Two implementations must satisfy this contract:
+    legacy_sim (Python, in-process for tests) and the optional Spring Boot
+    module (legacy/DEVIN_BRIEF.md). tests/test_legacy_contract.py is the
+    conformance suite.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /healthz:
+    get:
+      summary: Liveness
+      responses:
+        "200": {description: OK}
+  /openapi.json:
+    get:
+      summary: This document as JSON
+      responses:
+        "200": {description: OK}
+  /services:
+    get:
+      summary: Search services by name, alias or ID
+      parameters:
+        - {name: q, in: query, schema: {type: string},
+           description: Name, alias or ID; ranked by match quality}
+        - {$ref: "#/components/parameters/cursor"}
+        - {$ref: "#/components/parameters/limit"}
+      responses:
+        "200":
+          description: Page of services
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: "#/components/schemas/Page"}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: "#/components/schemas/Service"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /services/{id}:
+    get:
+      summary: Get one service
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200":
+          description: Service
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Service"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /services/{id}/metrics:
+    get:
+      summary: Aggregated APM-style metrics over a window
+      parameters:
+        - {$ref: "#/components/parameters/id"}
+        - {name: window, in: query, schema: {type: string, enum: [24h, 7d, 30d],
+           default: 24h}}
+      responses:
+        "200":
+          description: Aggregates with peak timestamps
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MetricsWindow"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /incidents:
+    get:
+      summary: Search incidents (newest first)
+      parameters:
+        - {name: service_id, in: query, schema: {type: string}}
+        - {name: severity, in: query, schema: {type: string, enum: [S1, S2, S3, S4]}}
+        - {name: status, in: query, schema: {type: string, enum: [open, mitigated, resolved]}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: since, in: query, schema: {type: string, format: date-time},
+           description: Only incidents opened at or after this time}
+        - {name: q, in: query, schema: {type: string},
+           description: Case-insensitive substring over title and description}
+        - {$ref: "#/components/parameters/cursor"}
+        - {$ref: "#/components/parameters/limit"}
+      responses:
+        "200":
+          description: Page of incident summaries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: "#/components/schemas/Page"}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: "#/components/schemas/IncidentSummary"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /incidents/{id}:
+    get:
+      summary: Get one incident with timeline and comments
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200":
+          description: Incident
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Incident"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /incidents/{id}/comments:
+    post:
+      summary: Append a comment (idempotent per idempotency_key)
+      parameters: [{$ref: "#/components/parameters/id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, idempotency_key]
+              properties:
+                author: {type: string}
+                text: {type: string}
+                idempotency_key: {type: string}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Comment"}
+        "200":
+          description: Replay of an earlier request with the same key
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Comment"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /change-requests:
+    get:
+      summary: Search change requests (newest first)
+      parameters:
+        - {name: status, in: query, schema: {type: string,
+           enum: [proposed, approved, in_progress, done]}}
+        - {name: service_id, in: query, schema: {type: string},
+           description: Any target service}
+        - {name: q, in: query, schema: {type: string}}
+        - {$ref: "#/components/parameters/cursor"}
+        - {$ref: "#/components/parameters/limit"}
+      responses:
+        "200":
+          description: Page of change-request summaries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: "#/components/schemas/Page"}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: "#/components/schemas/ChangeRequestSummary"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+  /change-requests/{id}:
+    get:
+      summary: Get one change request with BRD text and stories
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200":
+          description: Change request
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChangeRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /change-requests/{id}/stories:
+    get:
+      summary: Stories linked to a change request
+      parameters: [{$ref: "#/components/parameters/id"}]
+      responses:
+        "200":
+          description: Stories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Story"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      summary: Create draft stories (idempotent per idempotency_key)
+      parameters: [{$ref: "#/components/parameters/id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stories, idempotency_key]
+              properties:
+                idempotency_key: {type: string}
+                stories:
+                  type: array
+                  minItems: 1
+                  items: {$ref: "#/components/schemas/StoryInput"}
+      responses:
+        "201":
+          description: Created (all stories have draft=true)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Story"}
+        "200": {description: Replay of an earlier request with the same key}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /deployments:
+    get:
+      summary: Deployments (newest first)
+      parameters:
+        - {name: service_id, in: query, schema: {type: string}}
+        - {name: since, in: query, schema: {type: string, format: date-time}}
+        - {$ref: "#/components/parameters/cursor"}
+        - {$ref: "#/components/parameters/limit"}
+      responses:
+        "200":
+          description: Page of deployments
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: "#/components/schemas/Page"}
+                  - properties:
+                      items:
+                        type: array
+                        items: {$ref: "#/components/schemas/Deployment"}
+components:
+  parameters:
+    id: {name: id, in: path, required: true, schema: {type: string}}
+    cursor: {name: cursor, in: query, schema: {type: string},
+             description: Opaque; from a previous page's next_cursor}
+    limit: {name: limit, in: query,
+            schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+  responses:
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: {type: string, enum: [not_found, bad_request]}
+        message: {type: string}
+    Page:
+      type: object
+      required: [items, next_cursor, total]
+      properties:
+        items: {type: array}
+        next_cursor: {type: [string, "null"]}
+        total: {type: integer}
+    Service:
+      type: object
+      required: [service_id, name, aliases, owner_team, tier, source_ref]
+      properties:
+        service_id: {type: string, pattern: "^SVC-[0-9]{3}$"}
+        name: {type: string}
+        aliases: {type: array, items: {type: string}}
+        owner_team: {type: string}
+        tier: {type: integer, minimum: 1, maximum: 3}
+        description: {type: string}
+        source_ref: {type: string}
+    IncidentSummary:
+      type: object
+      required: [incident_id, service_id, severity, status, category, title,
+                 opened_at, source_ref]
+      properties:
+        incident_id: {type: string, pattern: "^INC-[0-9]{4}$"}
+        service_id: {type: string}
+        severity: {type: string, enum: [S1, S2, S3, S4]}
+        status: {type: string, enum: [open, mitigated, resolved]}
+        category: {type: string}
+        title: {type: string}
+        opened_at: {type: string, format: date-time}
+        resolved_at: {type: [string, "null"], format: date-time}
+        source_ref: {type: string}
+    Incident:
+      allOf:
+        - {$ref: "#/components/schemas/IncidentSummary"}
+        - type: object
+          required: [description, timeline, comments]
+          properties:
+            description: {type: string}
+            root_cause: {type: [string, "null"]}
+            timeline:
+              type: array
+              items:
+                type: object
+                required: [ts, event, by, note, source_ref]
+                properties:
+                  ts: {type: string, format: date-time}
+                  event: {type: string,
+                          enum: [detected, acknowledged, mitigated, resolved]}
+                  by: {type: string}
+                  note: {type: string}
+                  source_ref: {type: string}
+            comments:
+              type: array
+              items: {$ref: "#/components/schemas/Comment"}
+    Comment:
+      type: object
+      required: [comment_id, author, text, created_at, source_ref]
+      properties:
+        comment_id: {type: string}
+        author: {type: string}
+        text: {type: string}
+        created_at: {type: string, format: date-time}
+        source_ref: {type: string}
+    ChangeRequestSummary:
+      type: object
+      required: [cr_id, title, status, requested_by_team, target_services,
+                 created_at, source_ref]
+      properties:
+        cr_id: {type: string, pattern: "^CR-[0-9]{2}$"}
+        title: {type: string}
+        status: {type: string, enum: [proposed, approved, in_progress, done]}
+        requested_by_team: {type: string}
+        target_services: {type: array, items: {type: string}}
+        created_at: {type: string, format: date-time}
+        source_ref: {type: string}
+    ChangeRequest:
+      allOf:
+        - {$ref: "#/components/schemas/ChangeRequestSummary"}
+        - type: object
+          required: [brd_text, stories]
+          properties:
+            brd_text: {type: string}
+            stories:
+              type: array
+              items: {$ref: "#/components/schemas/Story"}
+    StoryInput:
+      type: object
+      required: [type, title]
+      properties:
+        type: {type: string, enum: [user, technical]}
+        title: {type: string}
+        acceptance_criteria: {type: array, items: {type: string}}
+        depends_on: {type: array, items: {type: string}}
+    Story:
+      allOf:
+        - {$ref: "#/components/schemas/StoryInput"}
+        - type: object
+          required: [story_id, cr_id, draft, created_at, source_ref]
+          properties:
+            story_id: {type: string}
+            cr_id: {type: string}
+            draft: {type: boolean}
+            created_at: {type: string, format: date-time}
+            source_ref: {type: string}
+    Deployment:
+      type: object
+      required: [deployment_id, service_id, version, deployed_at, outcome,
+                 source_ref]
+      properties:
+        deployment_id: {type: string}
+        service_id: {type: string}
+        version: {type: string}
+        deployed_at: {type: string, format: date-time}
+        outcome: {type: string, enum: [success, degraded, rolled_back]}
+        change_request_id: {type: [string, "null"]}
+        source_ref: {type: string}
+    MetricsWindow:
+      type: object
+      required: [service_id, window, from, to, samples, p95_ms, error_rate,
+                 db_round_trips, kafka_lag, source_ref]
+      properties:
+        service_id: {type: string}
+        window: {type: string, enum: [24h, 7d, 30d]}
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        samples: {type: integer}
+        p95_ms: {$ref: "#/components/schemas/Aggregate"}
+        error_rate: {$ref: "#/components/schemas/Aggregate"}
+        db_round_trips: {$ref: "#/components/schemas/Aggregate"}
+        kafka_lag: {$ref: "#/components/schemas/Aggregate"}
+        source_ref: {type: string}
+    Aggregate:
+      type: object
+      required: [avg, max, max_at]
+      properties:
+        avg: {type: number}
+        max: {type: number}
+        max_at: {type: string, format: date-time}

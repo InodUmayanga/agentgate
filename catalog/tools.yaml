@@ -1,0 +1,136 @@
+# Tool catalogue — the single source of truth for what the MCP server exposes.
+# Policy checks (scripts/policy_check.py) enforce:
+#   - every tool has: kind, roles, description (<= 60 tokens), example
+#   - every write tool has hitl: true and takes confirm + idempotency_key
+#   - every row-returning tool declares selectable fields
+#   - no field name matches a raw-PII pattern (email, phone, national_id, ...)
+version: 1
+roles: [viewer, engineer, lead]
+
+tools:
+  - name: resolve_service
+    kind: read
+    roles: [viewer, engineer, lead]
+    description: >-
+      Resolve a service name, alias or ID to the canonical service record.
+      Use before any service-scoped query.
+    example: {query: "order gw"}
+    returns_rows: true
+    fields: [service_id, name, owner_team, tier, aliases, source_ref]
+    rate_limit: 60
+    backend: GET /services?q=
+
+  - name: search_incidents
+    kind: read
+    roles: [viewer, engineer, lead]
+    description: >-
+      Search incidents by service, severity, status, text or date; paginated,
+      compact rows. Returns IDs to pass to get_incident.
+    example: {service_id: SVC-007, status: open, limit: 10,
+              fields: [incident_id, severity, title, opened_at]}
+    returns_rows: true
+    fields: [incident_id, service_id, severity, status, title, category,
+             opened_at, resolved_at, source_ref]
+    rate_limit: 60
+    backend: GET /incidents
+
+  - name: get_incident
+    kind: read
+    roles: [viewer, engineer, lead]
+    description: >-
+      Fetch one incident with description, timeline and root cause. Every
+      timeline entry carries a source_ref for citation.
+    example: {incident_id: INC-1042, include: [timeline]}
+    returns_rows: false
+    rate_limit: 60
+    backend: GET /incidents/{id}
+
+  - name: get_service_health
+    kind: read
+    roles: [viewer, engineer, lead]
+    description: >-
+      APM-style metrics for a service over a window (24h, 7d, 30d): p95 ms,
+      error rate, DB round-trips, Kafka lag, with peaks.
+    example: {service_id: SVC-007, window: 7d}
+    returns_rows: false
+    rate_limit: 60
+    backend: GET /services/{id}/metrics
+
+  - name: search_change_requests
+    kind: read
+    roles: [viewer, engineer, lead]
+    description: >-
+      Search change requests by status, target service or text; paginated,
+      compact rows.
+    example: {status: proposed, limit: 10}
+    returns_rows: true
+    fields: [cr_id, title, status, requested_by_team, target_services,
+             created_at, source_ref]
+    rate_limit: 60
+    backend: GET /change-requests
+
+  - name: get_change_request
+    kind: read
+    roles: [viewer, engineer, lead]
+    description: >-
+      Fetch one change request with its BRD text and linked stories.
+    example: {cr_id: CR-07}
+    returns_rows: false
+    rate_limit: 60
+    backend: GET /change-requests/{id}
+
+  - name: find_similar_incidents
+    kind: read
+    roles: [engineer, lead]
+    description: >-
+      Incidents similar to a given one by category and text overlap, ranked.
+      Use to find precedents and known fixes.
+    example: {incident_id: INC-1042, limit: 5}
+    returns_rows: true
+    fields: [incident_id, service_id, severity, title, similarity,
+             resolved_at, source_ref]
+    rate_limit: 30
+    backend: computed (GET /incidents + local ranking)
+
+  - name: add_incident_comment
+    kind: write
+    hitl: true
+    roles: [engineer, lead]
+    description: >-
+      Append a comment to an incident. Requires confirm=true after a human
+      has approved the exact text; idempotent per idempotency_key.
+    example: {incident_id: INC-1042, text: "RCA draft attached", confirm: false,
+              idempotency_key: "triage-INC-1042-1"}
+    returns_rows: false
+    rate_limit: 10
+    backend: POST /incidents/{id}/comments
+
+  - name: propose_stories
+    kind: write
+    hitl: true
+    roles: [lead]
+    description: >-
+      Create draft stories for a change request. Requires confirm=true after
+      human review; idempotent per idempotency_key. Drafts only.
+    example: {cr_id: CR-07, confirm: false, idempotency_key: "groom-CR-07-1",
+              stories: [{type: technical, title: "Add idempotency key to POST /orders",
+                         acceptance_criteria: ["Duplicate key returns 200 with original body"],
+                         depends_on: []}]}
+    returns_rows: false
+    rate_limit: 10
+    backend: POST /change-requests/{id}/stories
+
+  - name: draft_rca
+    kind: read
+    roles: [engineer, lead]
+    description: >-
+      Return a structured RCA template pre-filled with cited facts from the
+      incident, its service health and similar incidents. No write.
+    example: {incident_id: INC-1042}
+    returns_rows: false
+    rate_limit: 30
+    backend: computed (get_incident + get_service_health + find_similar_incidents)
+
+# Field names that must never appear in a tool schema or selectable fields.
+pii_field_patterns: [email, phone, mobile, national_id, nic, passport, dob,
+                     date_of_birth, address, ssn]

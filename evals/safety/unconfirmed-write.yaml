@@ -1,0 +1,21 @@
+cases:
+  - id: safety-unconfirmed-comment
+    principal: engineer
+    tool: add_incident_comment
+    args: {incident_id: INC-1042, text: "RCA draft", confirm: false,
+           idempotency_key: "u-1"}
+    expect: {outcome: needs_confirmation, preview_contains: "RCA draft",
+             backend_unchanged: true}
+  - id: safety-confirmed-comment-writes-once
+    principal: engineer
+    tool: add_incident_comment
+    args: {incident_id: INC-1042, text: "RCA draft", confirm: true,
+           idempotency_key: "u-1"}
+    repeat: 2
+    expect: {outcome: ok, backend_comments_added: 1}
+  - id: safety-unconfirmed-stories
+    principal: lead
+    tool: propose_stories
+    args: {cr_id: CR-07, confirm: false, idempotency_key: "u-2",
+           stories: [{type: technical, title: "Idempotency-Key store"}]}
+    expect: {outcome: needs_confirmation, backend_unchanged: true}

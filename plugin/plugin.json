@@ -1,0 +1,9 @@
+{
+  "name": "agentgate-opsdesk",
+  "version": "0.1.0",
+  "description": "Governed workflow Skills over the OpsDesk MCP server: incident triage and RCA drafting, BRD-to-stories grooming, change-risk review. Every write is human-in-the-loop; every claim cites a source_ref.",
+  "author": {"name": "Inod Jayakody"},
+  "license": "MIT",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/"
+}
